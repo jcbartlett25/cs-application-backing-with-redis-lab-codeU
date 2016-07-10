@@ -49,6 +49,10 @@ public class JedisIndex {
 		return "TermCounter:" + url;
 	}
 
+	public void add(String term, TermCounter tc) {
+		jedis.sadd(urlSetKey(term), tc.getLabel());
+	}
+
 	/**
 	 * Checks whether we have a TermCounter for a given URL.
 	 * 
@@ -67,8 +71,8 @@ public class JedisIndex {
 	 * @return Set of URLs.
 	 */
 	public Set<String> getURLs(String term) {
-        // FILL THIS IN!
-		return null;
+        Set<String> set = jedis.smembers(urlSetKey(term));
+		return set;
 	}
 
     /**
@@ -78,8 +82,27 @@ public class JedisIndex {
 	 * @return Map from URL to count.
 	 */
 	public Map<String, Integer> getCounts(String term) {
-        // FILL THIS IN!
-		return null;
+
+        Set<String> urls = getURLs(term);
+        Transaction transaction = jedis.multi();
+
+        for (String url : urls) {
+        	transaction.hget(termCounterKey(url), term);
+        }
+
+        List<Object> tcList = transaction.exec();
+        Map<String, Integer> map = new HashMap<String, Integer>();
+        int i = 0;
+
+        for (String url : urls) {
+        	Integer count = (Integer) Integer.parseInt((String) tcList.get(i));
+        	map.put(url, count);
+        	i++;
+        }
+
+        System.out.println(map);
+
+        return map;
 	}
 
     /**
@@ -90,8 +113,9 @@ public class JedisIndex {
 	 * @return
 	 */
 	public Integer getCount(String url, String term) {
-        // FILL THIS IN!
-		return null;
+        
+        String count = jedis.hget(termCounterKey(url), term);
+        return  (Integer) Integer.parseInt(count);
 	}
 
 
@@ -102,7 +126,17 @@ public class JedisIndex {
 	 * @param paragraphs  Collection of elements that should be indexed.
 	 */
 	public void indexPage(String url, Elements paragraphs) {
-        // FILL THIS IN!
+
+		TermCounter tc = new TermCounter(url);
+		tc.processElements(paragraphs);
+		Transaction transaction = jedis.multi();
+
+		for (String term : tc.keySet()) {
+			transaction.hset(termCounterKey(url), term, tc.get(term).toString());
+			transaction.sadd(urlSetKey(term), url);
+		}
+
+		transaction.exec();
 	}
 
 	/**
